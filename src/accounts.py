@@ -15,6 +15,10 @@ If only the primary account is configured, both modes share it (backward compati
 import os
 from dataclasses import dataclass
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 @dataclass
 class AlpacaAccount:
@@ -96,8 +100,15 @@ def get_account_for_mode(mode: str = None) -> AlpacaAccount:
     if mode == "swing" and "day" in _ACCOUNTS:
         return _ACCOUNTS["day"]
 
+    # Fallback: if day account isn't configured separately, share the swing account
+    if mode == "day" and "swing" in _ACCOUNTS:
+        return _ACCOUNTS["swing"]
+
     if "day" in _ACCOUNTS:
         return _ACCOUNTS["day"]
+
+    if "swing" in _ACCOUNTS:
+        return _ACCOUNTS["swing"]
 
     raise ValueError(
         f"No Alpaca account configured for mode '{mode}'. "
