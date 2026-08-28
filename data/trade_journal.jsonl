@@ -119,3 +119,49 @@
 {"timestamp": "2026-03-19T12:11:12.868458", "mode": "live", "ticker": "JPM", "action": "buy", "qty": 27, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
 {"timestamp": "2026-03-19T12:11:12.868458", "mode": "live", "ticker": "UNH", "action": "buy", "qty": 28, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
 {"timestamp": "2026-03-19T12:11:12.868458", "mode": "live", "ticker": "COIN", "action": "buy", "qty": 39, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T00:55:28.906036", "mode": "live", "ticker": "ANF", "action": "buy", "qty": 5, "status": "accepted", "reasoning": "Most analyst signals bullish", "order_id": "ace8c163-fc00-432b-b032-7881015939fe", "error": null}
+{"timestamp": "2026-08-27T00:55:28.906036", "mode": "live", "ticker": "WETO", "action": "buy", "qty": 8, "status": "accepted", "reasoning": "High number of bullish signals", "order_id": "1ede97bc-2f24-461c-8123-71f24e832e37", "error": null}
+{"timestamp": "2026-08-27T00:55:28.906036", "mode": "live", "ticker": "DVXB", "action": "buy", "qty": 7, "status": "accepted", "reasoning": "Majority bullish signals", "order_id": "6dd615a3-5f36-4a1b-a3e1-472bd2eb8da3", "error": null}
+{"timestamp": "2026-08-27T00:55:28.906036", "mode": "live", "ticker": "DVXV", "action": "buy", "qty": 6, "status": "accepted", "reasoning": "Mostly bullish signals", "order_id": "e4c6f23d-167e-48c1-9fa5-fed9121e6900", "error": null}
+{"timestamp": "2026-08-27T00:55:28.906036", "mode": "live", "ticker": "DVIN", "action": "buy", "qty": 8, "status": "accepted", "reasoning": "Strong bullish consensus", "order_id": "48642b91-e3bf-433e-b763-7c37ad6e82b6", "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "NVDA", "action": "buy", "qty": 65, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "AVGO", "action": "short", "qty": 40, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "TSM", "action": "buy", "qty": 48, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "AMD", "action": "buy", "qty": 23, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "MSFT", "action": "buy", "qty": 42, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "AAPL", "action": "buy", "qty": 68, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "META", "action": "buy", "qty": 28, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "GOOGL", "action": "buy", "qty": 61, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "AMZN", "action": "buy", "qty": 83, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "SPY", "action": "buy", "qty": 35, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "QQQ", "action": "buy", "qty": 30, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "PUR", "action": "buy", "qty": 235, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "CRWC", "action": "buy", "qty": 333, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "CRWL", "action": "buy", "qty": 139, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "BBW", "action": "buy", "qty": 388, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "SMST", "action": "buy", "qty": 485, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "INTC", "action": "buy", "qty": 121, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "CRM", "action": "buy", "qty": 44, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "SPCX", "action": "buy", "qty": 77, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T18:18:37.485616", "mode": "live", "ticker": "NVDL", "action": "buy", "qty": 297, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "TSM", "action": "buy", "qty": 49, "status": "accepted", "reasoning": "multiple bullish signals", "order_id": "25b99433-c355-4367-b8fe-b60f33346029", "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "AVGO", "action": "buy", "qty": 40, "status": "accepted", "reasoning": "strong bullish fundamentals", "order_id": "528742a9-4219-4a5e-9ddd-095496cc0ff8", "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "AMZN", "action": "buy", "qty": 80, "status": "accepted", "reasoning": "multiple strong bullish signals", "order_id": "52865cea-83f7-4d46-8021-85573b4371d9", "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "PUR", "action": "buy", "qty": 251, "status": "accepted", "reasoning": "strong bullish thesis", "order_id": "554e8915-57cf-449b-8656-18d4db7fc6d2", "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "GOOGL", "action": "buy", "qty": 62, "status": "accepted", "reasoning": "multiple strong bullish signals", "order_id": "e651340f-3a35-4226-8393-989c8629d003", "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "NVDL", "action": "buy", "qty": 299, "status": "accepted", "reasoning": "strong bullish thesis", "order_id": "c5f11fd3-d325-4de0-82ba-504af5af467c", "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "SPY", "action": "buy", "qty": 35, "status": "accepted", "reasoning": "multiple bullish signals", "order_id": "6a01f824-c5e0-40ea-aa9a-9ea47015aaf2", "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "QQQ", "action": "buy", "qty": 30, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "BBW", "action": "buy", "qty": 396, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "SMST", "action": "buy", "qty": 449, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "MARA", "action": "buy", "qty": 923, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "DRAM", "action": "buy", "qty": 198, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T20:19:13.450830", "mode": "live", "ticker": "SMCI", "action": "buy", "qty": 290, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T23:40:22.259619", "mode": "live", "ticker": "NVDA", "action": "buy", "qty": 65, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T23:40:22.259619", "mode": "live", "ticker": "AVGO", "action": "buy", "qty": 39, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T23:40:22.259619", "mode": "live", "ticker": "TSM", "action": "buy", "qty": 49, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-27T23:40:22.259619", "mode": "live", "ticker": "AMD", "action": "buy", "qty": 23, "status": "blocked", "reasoning": "", "order_id": null, "error": null}
+{"timestamp": "2026-08-28T00:06:53.925059", "mode": "live", "ticker": "NVDA", "action": "buy", "qty": 65, "status": "accepted", "reasoning": "Retry canceled morning order", "order_id": "5945def5-f67e-4a3c-9020-665b536ffd71", "error": null}
+{"timestamp": "2026-08-28T00:06:53.925059", "mode": "live", "ticker": "AVGO", "action": "buy", "qty": 39, "status": "accepted", "reasoning": "Retry canceled morning order", "order_id": "23d6a05a-6ea6-43a9-bc60-63245ca41701", "error": null}
+{"timestamp": "2026-08-28T00:06:53.925059", "mode": "live", "ticker": "TSM", "action": "buy", "qty": 49, "status": "accepted", "reasoning": "Retry canceled morning order", "order_id": "3b03501d-a99a-42bd-b219-d8fbac5e10aa", "error": null}
+{"timestamp": "2026-08-28T00:06:53.925059", "mode": "live", "ticker": "AMD", "action": "buy", "qty": 23, "status": "accepted", "reasoning": "Retry canceled morning order", "order_id": "78a4b51e-bcac-43c3-9a6b-be6d4a91ac89", "error": null}

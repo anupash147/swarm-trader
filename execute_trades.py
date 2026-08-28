@@ -63,7 +63,11 @@ from src.config import get_mode_config, DEFAULT_TARGET_MULTIPLIER
 
 # V2 risk manager — validates every BUY before execution
 try:
-    from risk_manager import validate_trade as rm_validate_trade, get_portfolio_state as rm_get_portfolio_state
+    from risk_manager import (
+        validate_trade as rm_validate_trade,
+        get_portfolio_state as rm_get_portfolio_state,
+        apply_fill_to_state as rm_apply_fill_to_state,
+    )
     RISK_MANAGER_AVAILABLE = True
     log.info("V2 risk manager loaded")
 except ImportError:
@@ -480,6 +484,9 @@ def main():
             })
             if result["success"]:
                 executed += 1
+                if RISK_MANAGER_AVAILABLE and rm_portfolio_state is not None:
+                    fill_price = entry_price or limit_price or float(positions.get(ticker, {}).get("current_price", 0))
+                    rm_apply_fill_to_state(rm_portfolio_state, ticker, action, qty, fill_price, mode=mode)
 
     output = {
         "timestamp": datetime.now().isoformat(),

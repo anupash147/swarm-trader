@@ -178,6 +178,55 @@ def get_portfolio_state(mode: str = None) -> dict:
     }
 
 
+def apply_fill_to_state(
+    portfolio_state: dict,
+    ticker: str,
+    action: str,
+    qty: int,
+    price: float,
+    mode: str = None,
+) -> None:
+    """Mutate a pre-fetched portfolio_state in place after a fill, so later
+    trades validated against the same batch see updated cash/positions instead
+    of the stale pre-batch snapshot."""
+    if mode is None:
+        mode = os.environ.get("TRADING_MODE", "swing")
+    ticker_sector, _, _, _ = _get_universe_maps(mode)
+
+    action = action.lower()
+    sym = ticker.upper()
+    trade_value = qty * price
+    sector = ticker_sector.get(sym, "other")
+
+    if action in ("buy", "short"):
+        portfolio_state["cash"] -= trade_value
+        pos = portfolio_state["positions"].setdefault(sym, {
+            "symbol": sym, "qty": 0.0, "market_value": 0.0,
+            "current_price": price, "avg_entry_price": price,
+            "unrealized_plpc": 0.0, "pct_of_equity": 0.0,
+        })
+        was_flat = pos.get("qty", 0) == 0
+        pos["qty"] = pos.get("qty", 0) + qty
+        pos["market_value"] = pos.get("market_value", 0) + trade_value
+        if was_flat:
+            portfolio_state["open_position_count"] += 1
+        portfolio_state["trade_count_today"] += 1
+        portfolio_state["sector_alloc"][sector] = portfolio_state["sector_alloc"].get(sector, 0) + trade_value
+    elif action in ("sell", "cover"):
+        portfolio_state["cash"] += trade_value
+        pos = portfolio_state["positions"].get(sym)
+        if pos:
+            pos["qty"] = max(0, pos.get("qty", 0) - qty)
+            pos["market_value"] = max(0.0, pos.get("market_value", 0) - trade_value)
+            if pos["qty"] == 0:
+                portfolio_state["open_position_count"] = max(0, portfolio_state["open_position_count"] - 1)
+        if sector in portfolio_state["sector_alloc"]:
+            portfolio_state["sector_alloc"][sector] = max(0.0, portfolio_state["sector_alloc"][sector] - trade_value)
+
+    equity = portfolio_state.get("equity", 0)
+    portfolio_state["cash_pct"] = (portfolio_state["cash"] / equity) if equity else 0.0
+
+
 def _estimate_weekly_pnl(current_equity: float, mode: str = None) -> float:
     """Estimate weekly P&L by reading performance snapshots.
     
