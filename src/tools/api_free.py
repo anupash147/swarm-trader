@@ -15,6 +15,8 @@ import datetime
 import hashlib
 import json
 import os
+import sys
+import threading
 import time
 import traceback
 from pathlib import Path
@@ -22,6 +24,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
+from src.accounts import get_account_for_mode
 from src.data.cache import get_cache
 from src.data.models import (
     CompanyNews,
@@ -55,20 +58,54 @@ SEC_HEADERS = {
     "Accept": "application/json",
 }
 _sec_last_request = 0.0
+_sec_lock = threading.Lock()
 SEC_MIN_INTERVAL = 0.11  # ~9 req/sec, safely under 10
+
+_yf_last_request = 0.0
+_yf_lock = threading.Lock()
+YF_MIN_INTERVAL = 0.35  # ~3 req/sec to stay under yfinance rate limits
+YF_MAX_RETRIES = 3
+YF_RETRY_BASE_DELAY = 15  # seconds, doubles each retry (15, 30, 60)
+
+ALPACA_DATA_BASE_URL = "https://data.alpaca.markets/v2"
+
+FMP_API_KEY = os.environ.get("FMP_API_KEY", "")
+FMP_BASE_URL = "https://financialmodelingprep.com/stable"
+
+_inflight_locks: dict[str, threading.Lock] = {}
+_inflight_meta_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
+def _get_inflight_lock(key: str) -> threading.Lock:
+    """Get or create a per-key lock to coalesce concurrent requests."""
+    with _inflight_meta_lock:
+        if key not in _inflight_locks:
+            _inflight_locks[key] = threading.Lock()
+        return _inflight_locks[key]
+
+
+def _yf_throttle():
+    """Respect yfinance rate limits (thread-safe)."""
+    global _yf_last_request
+    with _yf_lock:
+        elapsed = time.time() - _yf_last_request
+        if elapsed < YF_MIN_INTERVAL:
+            time.sleep(YF_MIN_INTERVAL - elapsed)
+        _yf_last_request = time.time()
+
+
 def _sec_throttle():
-    """Respect SEC EDGAR rate limit of 10 req/sec."""
+    """Respect SEC EDGAR rate limit of 10 req/sec (thread-safe)."""
     global _sec_last_request
-    elapsed = time.time() - _sec_last_request
-    if elapsed < SEC_MIN_INTERVAL:
-        time.sleep(SEC_MIN_INTERVAL - elapsed)
-    _sec_last_request = time.time()
+    with _sec_lock:
+        elapsed = time.time() - _sec_last_request
+        if elapsed < SEC_MIN_INTERVAL:
+            time.sleep(SEC_MIN_INTERVAL - elapsed)
+        _sec_last_request = time.time()
 
 
 def _disk_cache_get(namespace: str, key: str, ttl_seconds: int):
@@ -99,8 +136,9 @@ def _disk_cache_set(namespace: str, key: str, payload):
 
 
 def _get_yf_ticker(ticker: str):
-    """Get a yfinance Ticker object (lazy import)."""
+    """Get a yfinance Ticker object (lazy import), throttled."""
     import yfinance as yf
+    _yf_throttle()
     return yf.Ticker(ticker)
 
 
@@ -190,45 +228,114 @@ def _extract_xbrl_values(facts: dict, concept: str, namespace: str = "us-gaap", 
 # ---------------------------------------------------------------------------
 
 
+def _get_prices_alpaca(ticker: str, start_date: str, end_date: str) -> list[dict] | None:
+    """Fetch daily bars from Alpaca Data API. Returns None on failure."""
+    try:
+        account = get_account_for_mode()
+    except Exception as e:
+        print(f"[api_free] Alpaca get_prices skipped for {ticker}: no account ({e})", file=sys.stderr)
+        return None
+
+    url = f"{ALPACA_DATA_BASE_URL}/stocks/{ticker}/bars"
+    params = {
+        "start": start_date,
+        "end": end_date,
+        "timeframe": "1Day",
+        "limit": 1000,
+        "adjustment": "raw",
+        "feed": "iex",
+    }
+    all_bars = []
+    try:
+        while True:
+            resp = requests.get(url, headers=account.headers, params=params, timeout=15)
+            if resp.status_code != 200:
+                print(f"[api_free] Alpaca get_prices failed for {ticker}: HTTP {resp.status_code} - {resp.text[:100]}", file=sys.stderr)
+                return None
+            data = resp.json()
+            for bar in data.get("bars") or []:
+                all_bars.append({
+                    "open": float(bar["o"]),
+                    "close": float(bar["c"]),
+                    "high": float(bar["h"]),
+                    "low": float(bar["l"]),
+                    "volume": int(bar["v"]),
+                    "time": bar["t"],
+                })
+            next_token = data.get("next_page_token")
+            if not next_token:
+                break
+            params["page_token"] = next_token
+    except Exception as e:
+        print(f"[api_free] Alpaca get_prices failed for {ticker}: {e}")
+        return None
+
+    return all_bars if all_bars else None
+
+
+def _get_prices_yfinance(ticker: str, start_date: str, end_date: str) -> list[dict] | None:
+    """Fetch daily bars from yfinance with retry. Returns None on failure."""
+    for attempt in range(YF_MAX_RETRIES):
+        try:
+            yf_ticker = _get_yf_ticker(ticker)
+            end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d") + datetime.timedelta(days=1)
+            df = yf_ticker.history(start=start_date, end=end_dt.strftime("%Y-%m-%d"), interval="1d")
+
+            if df.empty:
+                return []
+
+            prices = []
+            for idx, row in df.iterrows():
+                prices.append({
+                    "open": float(row["Open"]),
+                    "close": float(row["Close"]),
+                    "high": float(row["High"]),
+                    "low": float(row["Low"]),
+                    "volume": int(row["Volume"]),
+                    "time": idx.strftime("%Y-%m-%dT00:00:00Z"),
+                })
+            return prices
+        except Exception as e:
+            if "Too Many Requests" in str(e) and attempt < YF_MAX_RETRIES - 1:
+                delay = YF_RETRY_BASE_DELAY * (2 ** attempt)
+                print(f"[api_free] yfinance get_prices rate limited for {ticker}, retrying in {delay}s...")
+                time.sleep(delay)
+                continue
+            print(f"[api_free] yfinance get_prices error for {ticker}: {e}")
+            return None
+    return None
+
+
 def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None) -> list[Price]:
-    """Fetch price data using yfinance."""
+    """Fetch price data via Alpaca Data API, falling back to yfinance."""
     cache_key = f"{ticker}_{start_date}_{end_date}"
 
     if cached_data := _cache.get_prices(cache_key):
         return [Price(**price) for price in cached_data]
 
-    # Check disk cache (15 min TTL)
     disk = _disk_cache_get("prices", cache_key, ttl_seconds=900)
     if disk:
         _cache.set_prices(cache_key, disk)
         return [Price(**p) for p in disk]
 
-    try:
-        yf_ticker = _get_yf_ticker(ticker)
-        # yfinance end is exclusive, add 1 day
-        end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d") + datetime.timedelta(days=1)
-        df = yf_ticker.history(start=start_date, end=end_dt.strftime("%Y-%m-%d"), interval="1d")
+    with _get_inflight_lock(f"prices_{ticker}"):
+        # Re-check cache — another thread may have populated it while we waited
+        if cached_data := _cache.get_prices(cache_key):
+            return [Price(**price) for price in cached_data]
 
-        if df.empty:
-            return []
+        prices = _get_prices_alpaca(ticker, start_date, end_date)
+        if prices is not None:
+            print(f"[api_free] get_prices OK for {ticker} via Alpaca ({len(prices)} bars)", file=sys.stderr)
+        else:
+            prices = _get_prices_yfinance(ticker, start_date, end_date)
+            if prices:
+                print(f"[api_free] get_prices OK for {ticker} via yfinance ({len(prices)} bars)", file=sys.stderr)
 
-        prices = []
-        for idx, row in df.iterrows():
-            prices.append({
-                "open": float(row["Open"]),
-                "close": float(row["Close"]),
-                "high": float(row["High"]),
-                "low": float(row["Low"]),
-                "volume": int(row["Volume"]),
-                "time": idx.strftime("%Y-%m-%dT00:00:00Z"),
-            })
-
-        _cache.set_prices(cache_key, prices)
-        _disk_cache_set("prices", cache_key, prices)
-        return [Price(**p) for p in prices]
-    except Exception as e:
-        print(f"[api_free] get_prices error for {ticker}: {e}")
-        return []
+        if prices:
+            _cache.set_prices(cache_key, prices)
+            _disk_cache_set("prices", cache_key, prices)
+            return [Price(**p) for p in prices]
+    return []
 
 
 def get_financial_metrics(
@@ -249,6 +356,124 @@ def get_financial_metrics(
         _cache.set_financial_metrics(cache_key, disk)
         return [FinancialMetrics(**m) for m in disk]
 
+    with _get_inflight_lock(f"metrics_{ticker}"):
+        # Re-check cache — another thread may have populated it while we waited
+        if cached_data := _cache.get_financial_metrics(cache_key):
+            return [FinancialMetrics(**m) for m in cached_data]
+        disk = _disk_cache_get("metrics", cache_key, ttl_seconds=24 * 3600)
+        if disk:
+            _cache.set_financial_metrics(cache_key, disk)
+            return [FinancialMetrics(**m) for m in disk]
+
+        return _fetch_financial_metrics_inner(ticker, end_date, period, limit, cache_key)
+
+
+def _get_financial_metrics_fmp(ticker: str, end_date: str, period: str) -> dict | None:
+    """Fetch TTM metrics from Financial Modeling Prep. Returns metric dict or None."""
+    if not FMP_API_KEY:
+        return None
+
+    params = {"apikey": FMP_API_KEY, "symbol": ticker}
+    key_metrics = {}
+    ratios = {}
+
+    try:
+        resp = requests.get(f"{FMP_BASE_URL}/key-metrics-ttm", params=params, timeout=15)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if data and isinstance(data, list):
+            key_metrics = data[0]
+
+        resp = requests.get(f"{FMP_BASE_URL}/ratios-ttm", params=params, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and isinstance(data, list):
+                ratios = data[0]
+    except Exception as e:
+        print(f"[api_free] FMP get_financial_metrics failed for {ticker}: {e}")
+        return None
+
+    if not key_metrics:
+        return None
+
+    growth = {}
+    try:
+        resp = requests.get(f"{FMP_BASE_URL}/income-statement-growth", params={**params, "limit": 1}, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and isinstance(data, list):
+                growth = data[0]
+    except Exception:
+        pass
+
+    return {
+        "ticker": ticker,
+        "report_period": end_date,
+        "period": period,
+        "currency": "USD",
+        "market_cap": key_metrics.get("marketCap"),
+        "enterprise_value": key_metrics.get("enterpriseValueTTM"),
+        "price_to_earnings_ratio": ratios.get("priceToEarningsRatioTTM"),
+        "price_to_book_ratio": ratios.get("priceToBookRatioTTM"),
+        "price_to_sales_ratio": ratios.get("priceToSalesRatioTTM"),
+        "enterprise_value_to_ebitda_ratio": key_metrics.get("evToEBITDATTM"),
+        "enterprise_value_to_revenue_ratio": key_metrics.get("evToSalesTTM"),
+        "free_cash_flow_yield": key_metrics.get("freeCashFlowYieldTTM"),
+        "peg_ratio": ratios.get("priceToEarningsGrowthRatioTTM"),
+        "gross_margin": ratios.get("grossProfitMarginTTM"),
+        "operating_margin": ratios.get("operatingProfitMarginTTM"),
+        "net_margin": ratios.get("netProfitMarginTTM"),
+        "return_on_equity": key_metrics.get("returnOnEquityTTM"),
+        "return_on_assets": key_metrics.get("returnOnAssetsTTM"),
+        "return_on_invested_capital": key_metrics.get("returnOnInvestedCapitalTTM"),
+        "asset_turnover": ratios.get("assetTurnoverTTM"),
+        "inventory_turnover": ratios.get("inventoryTurnoverTTM"),
+        "receivables_turnover": ratios.get("receivablesTurnoverTTM"),
+        "days_sales_outstanding": key_metrics.get("daysOfSalesOutstandingTTM"),
+        "operating_cycle": key_metrics.get("operatingCycleTTM"),
+        "working_capital_turnover": ratios.get("workingCapitalTurnoverRatioTTM"),
+        "current_ratio": key_metrics.get("currentRatioTTM"),
+        "quick_ratio": ratios.get("quickRatioTTM"),
+        "cash_ratio": ratios.get("cashRatioTTM"),
+        "operating_cash_flow_ratio": ratios.get("operatingCashFlowSalesRatioTTM"),
+        "debt_to_equity": ratios.get("debtToEquityRatioTTM"),
+        "debt_to_assets": ratios.get("debtToAssetsRatioTTM"),
+        "interest_coverage": ratios.get("interestCoverageRatioTTM"),
+        "revenue_growth": growth.get("growthRevenue"),
+        "earnings_growth": growth.get("growthNetIncome"),
+        "book_value_growth": None,
+        "earnings_per_share_growth": growth.get("growthEPS"),
+        "free_cash_flow_growth": None,
+        "operating_income_growth": growth.get("growthOperatingIncome"),
+        "ebitda_growth": growth.get("growthEBITDA"),
+        "payout_ratio": ratios.get("dividendPayoutRatioTTM"),
+        "earnings_per_share": ratios.get("netIncomePerShareTTM"),
+        "book_value_per_share": ratios.get("bookValuePerShareTTM"),
+        "free_cash_flow_per_share": ratios.get("freeCashFlowPerShareTTM"),
+    }
+
+
+def _fetch_financial_metrics_inner(ticker, end_date, period, limit, cache_key):
+    """Inner fetch logic for get_financial_metrics, called under lock."""
+    # Try FMP first (authenticated, reliable)
+    fmp_metric = _get_financial_metrics_fmp(ticker, end_date, period)
+    if fmp_metric:
+        metrics_list = [fmp_metric]
+        if limit > 1:
+            cik = _resolve_cik(ticker)
+            if cik:
+                facts = _get_company_facts_sec(cik)
+                if facts:
+                    historical = _build_historical_metrics(ticker, facts, end_date, period, limit - 1)
+                    metrics_list.extend(historical)
+        metrics_list = metrics_list[:limit]
+        _cache.set_financial_metrics(cache_key, metrics_list)
+        _disk_cache_set("metrics", cache_key, metrics_list)
+        print(f"[api_free] get_financial_metrics OK for {ticker} via FMP", file=sys.stderr)
+        return [FinancialMetrics(**m) for m in metrics_list]
+
+    # Fallback: yfinance
     try:
         yf_ticker = _get_yf_ticker(ticker)
         info = yf_ticker.info or {}
@@ -376,8 +601,45 @@ def get_financial_metrics(
         metrics_list = metrics_list[:limit]
         _cache.set_financial_metrics(cache_key, metrics_list)
         _disk_cache_set("metrics", cache_key, metrics_list)
+        print(f"[api_free] get_financial_metrics OK for {ticker} via yfinance", file=sys.stderr)
         return [FinancialMetrics(**m) for m in metrics_list]
     except Exception as e:
+        if "Too Many Requests" in str(e):
+            for attempt in range(YF_MAX_RETRIES):
+                delay = YF_RETRY_BASE_DELAY * (2 ** (attempt + 1))
+                print(f"[api_free] get_financial_metrics rate limited for {ticker}, retrying in {delay}s (attempt {attempt + 1}/{YF_MAX_RETRIES})...")
+                time.sleep(delay)
+                try:
+                    yf_ticker = _get_yf_ticker(ticker)
+                    info = yf_ticker.info or {}
+                    metric = {
+                        "ticker": ticker,
+                        "report_period": end_date,
+                        "period": period,
+                        "currency": info.get("currency", "USD"),
+                        "market_cap": info.get("marketCap"),
+                        "price_to_earnings_ratio": info.get("trailingPE"),
+                        "price_to_book_ratio": info.get("priceToBook"),
+                        "price_to_sales_ratio": info.get("priceToSalesTrailing12Months"),
+                        "enterprise_value_to_ebitda_ratio": info.get("enterpriseToEbitda"),
+                        "gross_margin": info.get("grossMargins"),
+                        "operating_margin": info.get("operatingMargins"),
+                        "net_margin": info.get("profitMargins"),
+                        "return_on_equity": info.get("returnOnEquity"),
+                        "return_on_assets": info.get("returnOnAssets"),
+                        "current_ratio": info.get("currentRatio"),
+                        "debt_to_equity": info.get("debtToEquity"),
+                        "revenue_growth": info.get("revenueGrowth"),
+                        "earnings_growth": info.get("earningsGrowth"),
+                        "earnings_per_share": info.get("trailingEps"),
+                    }
+                    _cache.set_financial_metrics(cache_key, [metric])
+                    _disk_cache_set("metrics", cache_key, [metric])
+                    return [FinancialMetrics(**metric)]
+                except Exception as retry_e:
+                    if "Too Many Requests" not in str(retry_e):
+                        print(f"[api_free] get_financial_metrics error for {ticker}: {retry_e}")
+                        return []
         print(f"[api_free] get_financial_metrics error for {ticker}: {e}")
         return []
 
@@ -883,18 +1145,22 @@ def get_market_cap(
     end_date: str,
     api_key: str = None,
 ) -> float | None:
-    """Fetch market cap using yfinance."""
+    """Fetch market cap — tries financial metrics cache/FMP first, yfinance last."""
+    # Try cached/FMP metrics first (no extra API call if already fetched)
+    try:
+        metrics = get_financial_metrics(ticker, end_date, api_key=api_key, limit=1)
+        if metrics and metrics[0].market_cap:
+            return metrics[0].market_cap
+    except Exception:
+        pass
+
+    # Last resort: direct yfinance call
     try:
         yf_ticker = _get_yf_ticker(ticker)
         info = yf_ticker.info or {}
         mc = info.get("marketCap")
         if mc:
             return float(mc)
-
-        # Fallback to financial metrics
-        metrics = get_financial_metrics(ticker, end_date, api_key=api_key)
-        if metrics:
-            return metrics[0].market_cap
         return None
     except Exception as e:
         print(f"[api_free] get_market_cap error for {ticker}: {e}")

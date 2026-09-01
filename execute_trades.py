@@ -192,6 +192,13 @@ def place_order(
         or (stop_price is not None and take_profit is not None and order_type not in ("oco",))
     )
 
+    if use_bracket and (stop_price is None or take_profit is None):
+        return {
+            "success": False,
+            "status_code": None,
+            "error": "Bracket orders require both stop_price and take_profit.",
+        }
+
     if use_bracket:
         order = {
             "symbol": ticker,

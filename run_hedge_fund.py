@@ -36,6 +36,14 @@ from src.config import resolve_mode, get_mode_config
 from src.main import run_hedge_fund
 
 
+SWING_DEFAULT_ANALYSTS = "warren_buffett,michael_burry,cathie_wood,autoresearch,fundamentals_analyst,technical_analyst"
+DAY_DEFAULT_ANALYSTS = "market_regime,apex,autoresearch,technical_analyst,sentiment_analyst"
+
+
+def _default_analysts_for_mode(mode: str) -> str:
+    return DAY_DEFAULT_ANALYSTS if mode == "day" else SWING_DEFAULT_ANALYSTS
+
+
 def _resolve_openclaw_model(fallback="qwen3.5:397b-cloud"):
     """Read the primary model from ~/.openclaw/openclaw.json (drox agent or defaults)."""
     config_path = Path.home() / ".openclaw" / "openclaw.json"
@@ -138,8 +146,8 @@ Examples:
     parser.add_argument("--model", type=str, default=None,
                         help="Model to use (default: LLM_MODEL env var or openclaw.json)")
     parser.add_argument("--analysts", type=str,
-                        default="warren_buffett,michael_burry,cathie_wood,apex,autoresearch,fundamentals_analyst,technical_analyst",
-                        help="Comma-separated list of analysts to use")
+                        default=None,
+                        help="Comma-separated list of analysts to use (default depends on --mode)")
     parser.add_argument("--show-reasoning", action="store_true",
                         help="Show detailed reasoning from each agent")
 
@@ -151,7 +159,8 @@ Examples:
     if args.model is None:
         args.model = os.getenv("LLM_MODEL") or _resolve_openclaw_model()
 
-    selected_analysts = [a.strip() for a in args.analysts.split(",") if a.strip()]
+    analysts_arg = args.analysts or _default_analysts_for_mode(mode)
+    selected_analysts = [a.strip() for a in analysts_arg.split(",") if a.strip()]
     specific_tickers = [t.strip() for t in args.tickers.split(",")] if args.tickers else None
 
     try:

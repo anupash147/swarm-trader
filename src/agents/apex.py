@@ -15,7 +15,7 @@ import json
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing_extensions import Literal
 
 from src.config import DAY_TRADE_UNIVERSE, DEFAULT_STOP_PCT, DEFAULT_TARGET_MULTIPLIER
@@ -35,6 +35,13 @@ class ApexSignal(BaseModel):
     stop_price: float | None = None
     target_price: float | None = None
     reasoning: str
+
+    @field_validator("entry_type", mode="before")
+    @classmethod
+    def normalize_no_trade_entry_type(cls, value):
+        if value in (None, "", "neutral", "none", "no_trade"):
+            return "wait"
+        return value
 
 
 # ---------------------------------------------------------------------------
