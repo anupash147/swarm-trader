@@ -223,6 +223,8 @@ Examples:
             output_detailed_summary(decisions, analyst_signals, trade_results, args.execute)
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ Error: {e}")
         return 1
 
