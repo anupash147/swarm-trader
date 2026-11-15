@@ -165,21 +165,22 @@ Examples:
 
     try:
         print(f"📡 Fetching Alpaca account and positions... [{mode.upper()} — {mode_config['label']}]")
-        account = get_alpaca_account()
-        positions_raw = get_alpaca_positions()
+        account = get_alpaca_account(mode=mode)
+        positions_raw = get_alpaca_positions(mode=mode)
 
         if not args.telegram:
             print(f"✅ Found {len(positions_raw)} positions")
             print(format_positions_summary(positions_raw, account))
             print()
 
+        min_cash_pct = mode_config["risk"]["min_cash_pct"]
         if specific_tickers:
             tickers_to_analyze = specific_tickers
-            portfolio = convert_to_portfolio(positions_raw, account, specific_tickers)
+            portfolio = convert_to_portfolio(positions_raw, account, specific_tickers, min_cash_pct=min_cash_pct)
         else:
             held_tickers = [p["symbol"] for p in positions_raw if float(p.get("qty", 0)) != 0]
             tickers_to_analyze = held_tickers
-            portfolio = convert_to_portfolio(positions_raw, account)
+            portfolio = convert_to_portfolio(positions_raw, account, min_cash_pct=min_cash_pct)
 
         if not tickers_to_analyze:
             print("❌ No tickers to analyze. Either specify --tickers or hold some positions.")

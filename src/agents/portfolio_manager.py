@@ -112,6 +112,9 @@ def compute_allowed_actions(
     margin_requirement = float(portfolio.get("margin_requirement", 0.5))
     margin_used = float(portfolio.get("margin_used", 0.0))
     equity = float(portfolio.get("equity", cash))
+    min_cash_pct = float(portfolio.get("min_cash_pct", 0.0))
+    # Cash below this floor can't be spent, or risk_manager.validate_trade() will reject the trade
+    buyable_cash = max(0.0, cash - equity * min_cash_pct)
 
     for ticker in tickers:
         price = float(current_prices.get(ticker, 0.0))
@@ -129,8 +132,8 @@ def compute_allowed_actions(
         # Long side
         if long_shares > 0:
             actions["sell"] = long_shares
-        if cash > 0 and price > 0:
-            max_buy_cash = int(cash // price)
+        if buyable_cash > 0 and price > 0:
+            max_buy_cash = int(buyable_cash // price)
             max_buy = max(0, min(max_qty, max_buy_cash))
             if max_buy > 0:
                 actions["buy"] = max_buy
@@ -138,14 +141,15 @@ def compute_allowed_actions(
         # Short side
         if short_shares > 0:
             actions["cover"] = short_shares
-        if price > 0 and max_qty > 0:
+        if buyable_cash > 0 and price > 0 and max_qty > 0:
+            max_short_cash = int(buyable_cash // price)
             if margin_requirement <= 0.0:
-                # If margin requirement is zero or unset, only cap by max_qty
-                max_short = max_qty
+                # If margin requirement is zero or unset, only cap by max_qty and cash
+                max_short = max(0, min(max_qty, max_short_cash))
             else:
                 available_margin = max(0.0, (equity / margin_requirement) - margin_used)
                 max_short_margin = int(available_margin // price)
-                max_short = max(0, min(max_qty, max_short_margin))
+                max_short = max(0, min(max_qty, max_short_margin, max_short_cash))
             if max_short > 0:
                 actions["short"] = max_short
 
@@ -270,4 +274,26 @@ def generate_trading_decision(
     # Merge prefilled holds with LLM results
     merged = dict(prefilled_decisions)
     merged.update(llm_out.decisions)
-    return PortfolioManagerOutput(decisions=merged)
+    return PortfolioManagerOutput(decisions=_enforce_allowed_actions(merged, allowed_actions_full))
+
+
+def _enforce_allowed_actions(
+        decisions: dict[str, "PortfolioDecision"],
+        allowed_actions_full: dict[str, dict[str, int]],
+) -> dict[str, "PortfolioDecision"]:
+    """Clamp/reject any LLM decision that exceeds the deterministic allowed actions, since the
+    LLM only sees the limits as a prompt instruction and can ignore them."""
+    enforced = {}
+    for ticker, decision in decisions.items():
+        allowed = allowed_actions_full.get(ticker, {"hold": 0})
+        max_qty = allowed.get(decision.action)
+        if max_qty is None:
+            enforced[ticker] = decision.model_copy(update={
+                "action": "hold", "quantity": 0,
+                "reasoning": f"Blocked: '{decision.action}' not allowed (would violate risk limits)",
+            })
+        elif decision.quantity > max_qty:
+            enforced[ticker] = decision.model_copy(update={"quantity": max_qty})
+        else:
+            enforced[ticker] = decision
+    return enforced

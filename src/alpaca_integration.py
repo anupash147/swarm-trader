@@ -68,6 +68,7 @@ def convert_to_portfolio(
     alpaca_positions: list[dict],
     alpaca_account: dict,
     tickers: list[str] | None = None,
+    min_cash_pct: float = 0.0,
 ) -> dict:
     """Convert Alpaca positions + account into the portfolio format expected by the hedge fund.
 
@@ -76,11 +77,15 @@ def convert_to_portfolio(
         alpaca_account: Raw Alpaca account object
         tickers: Full list of tickers to analyze (including ones not currently held).
                  If None, uses only tickers from existing positions.
+        min_cash_pct: Mode's minimum cash reserve fraction, so position sizing
+                      doesn't propose buys that risk_manager.validate_trade()
+                      will reject anyway.
 
     Returns:
         Portfolio dict compatible with run_hedge_fund()
     """
     cash = float(alpaca_account.get("cash", 0))
+    equity = float(alpaca_account.get("equity", cash))
 
     # Build lookup by symbol
     positions_by_symbol: dict[str, dict] = {p["symbol"]: p for p in alpaca_positions}
@@ -113,6 +118,8 @@ def convert_to_portfolio(
 
     return {
         "cash": cash,
+        "equity": equity,
+        "min_cash_pct": min_cash_pct,
         "margin_requirement": 0.5,
         "margin_used": 0.0,
         "positions": positions,
