@@ -20,9 +20,11 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()  # Load .env before any imports that need credentials
 
@@ -88,6 +90,35 @@ def _decisions_to_trades(decisions: dict) -> dict:
     return {"trades": trades}
 
 
+def _execution_time(value: str) -> datetime:
+    try:
+        target = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("Use an ISO 8601 execution time") from error
+    if target.tzinfo is None:
+        raise argparse.ArgumentTypeError("Execution time must include a UTC offset")
+    return target
+
+
+def _wait_for_execution(target: datetime, grace_seconds: int, mode: str) -> None:
+    while True:
+        remaining = (target - datetime.now(timezone.utc)).total_seconds()
+        if remaining <= 0:
+            break
+        time.sleep(min(remaining, 30))
+    if -remaining > grace_seconds:
+        raise RuntimeError("Execution deadline missed; no orders submitted")
+    from src.accounts import get_account_for_mode
+    response = requests.get(
+        "https://paper-api.alpaca.markets/v2/clock",
+        headers=get_account_for_mode(mode).headers,
+        timeout=10,
+    )
+    response.raise_for_status()
+    if not response.json().get("is_open", False):
+        raise RuntimeError("Market is closed; no orders submitted")
+
+
 def _execute_via_execute_trades(decisions: dict, mode: str, dry_run: bool) -> list[dict]:
     """Delegate execution to execute_trades.py (which enforces V2 risk rules)."""
     trades_input = _decisions_to_trades(decisions)
@@ -103,21 +134,19 @@ def _execute_via_execute_trades(decisions: dict, mode: str, dry_run: bool) -> li
         input=json.dumps(trades_input),
         capture_output=True,
         text=True,
-        cwd=str(Path(__file__).parent),
     )
 
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="")
 
     if result.returncode != 0 or not result.stdout.strip():
-        return []
+        raise RuntimeError("Trade executor failed or returned no output")
 
     try:
         output = json.loads(result.stdout)
         return output.get("results", [])
-    except json.JSONDecodeError:
-        print(f"⚠️ Could not parse execute_trades.py output", file=sys.stderr)
-        return []
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Could not parse trade executor output") from error
 
 
 def main():
@@ -150,8 +179,18 @@ Examples:
                         help="Comma-separated list of analysts to use (default depends on --mode)")
     parser.add_argument("--show-reasoning", action="store_true",
                         help="Show detailed reasoning from each agent")
+    parser.add_argument("--execute-at", type=_execution_time,
+                        help="Wait until this timezone-aware ISO 8601 time before paper trading")
+    parser.add_argument("--execution-grace-seconds", type=int, default=300,
+                        help="Reject scheduled execution more than this many seconds late")
+    parser.add_argument("--output", type=Path,
+                        help="Write analysis and trade results to a JSON file")
 
     args = parser.parse_args()
+    if args.execution_grace_seconds < 0:
+        parser.error("--execution-grace-seconds must be nonnegative")
+    if args.execute_at and not args.execute:
+        parser.error("--execute-at requires --execute")
 
     # Resolve mode and model
     mode = resolve_mode(cli_mode=args.mode)
@@ -211,17 +250,35 @@ Examples:
             print("❌ No trading decisions generated")
             return 1
 
+        report = {
+            "analyzed_at": datetime.now(timezone.utc).isoformat(),
+            "mode": mode,
+            "model": args.model,
+            "decisions": decisions,
+            "analyst_signals": analyst_signals,
+        }
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(report, indent=2))
+        if args.execute_at:
+            _wait_for_execution(args.execute_at, args.execution_grace_seconds, mode)
+
         # Route execution through execute_trades.py (V2 risk validation)
         trade_results = _execute_via_execute_trades(
             decisions=decisions,
             mode=mode,
             dry_run=not args.execute,
         )
+        if args.output:
+            report["trade_results"] = trade_results
+            args.output.write_text(json.dumps(report, indent=2))
 
         if args.telegram:
             output_telegram_summary(decisions, trade_results, args.execute)
         else:
             output_detailed_summary(decisions, analyst_signals, trade_results, args.execute)
+        if any(trade.get("status") == "failed" for trade in trade_results):
+            return 1
 
     except Exception as e:
         import traceback
